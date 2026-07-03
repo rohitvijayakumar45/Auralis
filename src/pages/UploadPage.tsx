@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud, X, RefreshCw } from "lucide-react";
+import { v4 as uuid } from "uuid";
 import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,7 @@ export function UploadPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
 
   const hashFile = async (file: File) => {
+    if (!globalThis.crypto?.subtle) return "";
     const buffer = await file.arrayBuffer();
     const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -83,7 +85,7 @@ export function UploadPage() {
       }
       
       const newItems = files.map(file => ({
-        id: crypto.randomUUID(),
+        id: uuid(),
         fileName: file.name,
         title: file.name.replace(/\.[^.]+$/, ""),
         description: "",

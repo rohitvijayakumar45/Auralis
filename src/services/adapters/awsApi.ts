@@ -1,4 +1,5 @@
 import axios, { AxiosHeaders, type AxiosInstance } from "axios";
+import { v4 as uuid } from "uuid";
 import type { ServiceRegistry } from "../contracts";
 import type { PhotoAsset, SearchState, UploadItem, User } from "../../types/domain";
 
@@ -166,7 +167,7 @@ export function createAwsApiAdapters(): ServiceRegistry {
           }
         });
         return {
-          id: crypto.randomUUID(),
+          id: uuid(),
           fileName: file.name,
           progress: 100,
           status: "complete"
