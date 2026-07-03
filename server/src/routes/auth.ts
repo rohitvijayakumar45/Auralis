@@ -15,11 +15,16 @@ export const authRouter = Router();
 
 authRouter.post("/signup", async (request, response, next) => {
   try {
-    const body = z
+      const body = z
       .object({
         name: z.string().min(1),
         email: z.string().email(),
-        password: z.string().min(8)
+        password: z
+          .string()
+          .min(8)
+          .regex(/[A-Z]/, "Password must contain at least one uppercase letter.")
+          .regex(/[0-9]/, "Password must contain at least one number.")
+          .regex(/[!@#$%^&*(),.?":{}|<>]/, "Password must contain at least one symbol.")
       })
       .parse(request.body);
 

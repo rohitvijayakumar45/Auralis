@@ -8,6 +8,7 @@ export const photoKeys = {
   list: (search: SearchState) => [...photoKeys.all, search] as const,
   detail: (id: string) => [...photoKeys.all, "detail", id] as const,
   albums: ["albums"] as const,
+  albumDetail: (id: string) => [...photoKeys.albums, "detail", id] as const,
   user: ["user"] as const,
   dashboardStats: ["dashboardStats"] as const,
   settings: ["settings"] as const
@@ -47,6 +48,71 @@ export function useAlbums() {
     queryKey: photoKeys.albums,
     queryFn: services.metadata.listAlbums
   });
+}
+
+export function useAlbum(albumId: string) {
+  const services = useServices();
+  return useQuery({
+    queryKey: photoKeys.albumDetail(albumId),
+    queryFn: () => services.metadata.getAlbum(albumId)
+  });
+}
+
+export function useAlbumActions() {
+  const services = useServices();
+  const queryClient = useQueryClient();
+
+  const create = useMutation({
+    mutationFn: ({ title, description }: { title: string; description?: string }) => services.metadata.createAlbum(title, description),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.albums });
+      queryClient.invalidateQueries({ queryKey: photoKeys.dashboardStats });
+      toast.success("Album created");
+    },
+    onError: () => toast.error("Failed to create album")
+  });
+
+  const rename = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => services.metadata.renameAlbum(id, title),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.albums });
+      queryClient.invalidateQueries({ queryKey: photoKeys.albumDetail(id) });
+      toast.success("Album renamed");
+    },
+    onError: () => toast.error("Failed to rename album")
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => services.metadata.deleteAlbum(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.albums });
+      queryClient.invalidateQueries({ queryKey: photoKeys.dashboardStats });
+      toast.success("Album deleted");
+    },
+    onError: () => toast.error("Failed to delete album")
+  });
+
+  const addPhotos = useMutation({
+    mutationFn: ({ id, photoIds }: { id: string; photoIds: string[] }) => services.metadata.addPhotosToAlbum(id, photoIds),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.albums });
+      queryClient.invalidateQueries({ queryKey: photoKeys.albumDetail(id) });
+      toast.success("Photos added to album");
+    },
+    onError: () => toast.error("Failed to add photos")
+  });
+
+  const removePhotos = useMutation({
+    mutationFn: ({ id, photoIds }: { id: string; photoIds: string[] }) => services.metadata.removePhotosFromAlbum(id, photoIds),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.albums });
+      queryClient.invalidateQueries({ queryKey: photoKeys.albumDetail(id) });
+      toast.success("Photos removed from album");
+    },
+    onError: () => toast.error("Failed to remove photos")
+  });
+
+  return { create, rename, remove, addPhotos, removePhotos };
 }
 
 export function useDashboardStats() {
@@ -132,7 +198,10 @@ export function usePhotoActions(search: SearchState) {
         }
       });
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: photoKeys.list(search) })
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.list(search) });
+      queryClient.invalidateQueries({ queryKey: photoKeys.dashboardStats });
+    }
   });
 
   const archive = useMutation({
@@ -182,7 +251,10 @@ export function usePhotoActions(search: SearchState) {
         }
       });
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: photoKeys.list(search) })
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: photoKeys.list(search) });
+      queryClient.invalidateQueries({ queryKey: photoKeys.dashboardStats });
+    }
   });
 
   return { favorite, archive, remove };

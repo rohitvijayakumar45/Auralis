@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { isAxiosError } from "axios";
 import { Button } from "../components/ui/Button";
 import { useServices } from "../hooks/useServices";
 
@@ -13,13 +14,36 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
     const email = String(form.get("email"));
     const password = String(form.get("password"));
     const name = String(form.get("name") ?? "Auralis Member");
+
     if (mode === "signup") {
-      await services.auth.signup(name, email, password);
-    } else {
-      await services.auth.login(email, password);
+      const hasUppercase = /[A-Z]/.test(password);
+      const hasNumber = /[0-9]/.test(password);
+      const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+      if (!hasUppercase || !hasNumber || !hasSymbol) {
+        toast.error("Password must contain at least one uppercase letter, one number, and one symbol.");
+        return;
+      }
     }
-    toast.success(mode === "signup" ? "Account prepared" : "Welcome back");
-    navigate("/gallery");
+
+    try {
+      if (mode === "signup") {
+        await services.auth.signup(name, email, password);
+      } else {
+        await services.auth.login(email, password);
+      }
+      toast.success(mode === "signup" ? "Account prepared" : "Welcome back");
+      navigate("/gallery");
+    } catch (error: unknown) {
+      if (isAxiosError(error)) {
+        const msg = error.response?.data?.message || error.message || "Authentication failed.";
+        toast.error(msg);
+      } else if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Authentication failed.");
+      }
+    }
   }
 
   return (

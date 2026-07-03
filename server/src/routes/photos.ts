@@ -10,6 +10,7 @@ import {
   patchPhotoFlag,
   renamePhoto,
   createAlbum,
+  getAlbum,
   renameAlbum,
   deleteAlbum,
   addPhotosToAlbum,
@@ -30,7 +31,8 @@ photosRouter.get("/photos", async (request, response, next) => {
         filter: z.string().default("all"),
         sort: z.string().default("newest"),
         limit: z.coerce.number().optional(),
-        offset: z.coerce.number().optional()
+        offset: z.coerce.number().optional(),
+        albumId: z.string().optional()
       })
       .parse(request.query);
     const rows = await listPhotos(request.user!.userId, {
@@ -38,9 +40,16 @@ photosRouter.get("/photos", async (request, response, next) => {
       filter: query.filter,
       sort: query.sort,
       limit: query.limit,
-      offset: query.offset
+      offset: query.offset,
+      albumId: query.albumId
     });
-    response.json(rows);
+    const photosWithUrls = await Promise.all(
+      (rows as Record<string, unknown>[]).map(async (row) => {
+        const src = await createDownloadUrl(String(row.storage_key));
+        return { ...row, src };
+      })
+    );
+    response.json(photosWithUrls);
   } catch (error) {
     next(error);
   }
@@ -53,7 +62,8 @@ photosRouter.get("/photos/:id", async (request, response, next) => {
       response.status(404).json({ message: "Photo not found" });
       return;
     }
-    response.json(photo);
+    const src = await createDownloadUrl(String(photo.storage_key));
+    response.json({ ...photo, src });
   } catch (error) {
     next(error);
   }
@@ -133,7 +143,30 @@ photosRouter.patch("/photos/:id", async (request, response, next) => {
 
 photosRouter.get("/albums", async (request, response, next) => {
   try {
-    response.json(await listAlbums(request.user!.userId));
+    const albums = await listAlbums(request.user!.userId);
+    const albumsWithCover = await Promise.all(
+      albums.map(async (album) => {
+        let coverPhotoSrc = undefined;
+        if (album.coverStorageKey) {
+          coverPhotoSrc = await createDownloadUrl(String(album.coverStorageKey));
+        }
+        return { ...album, coverPhotoSrc };
+      })
+    );
+    response.json(albumsWithCover);
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.get("/albums/:id", async (request, response, next) => {
+  try {
+    const album = await getAlbum(request.user!.userId, request.params.id);
+    if (!album) {
+      response.status(404).json({ message: "Album not found" });
+      return;
+    }
+    response.json(album);
   } catch (error) {
     next(error);
   }
@@ -218,15 +251,22 @@ photosRouter.post("/uploads/complete", async (request, response, next) => {
       .object({
         fileName: z.string().min(1),
         storageKey: z.string().min(1),
-        thumbnailKey: z.string().optional()
+        thumbnailKey: z.string().optional(),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        camera: z.string().optional(),
+        fileSize: z.number().optional()
       })
       .parse(request.body);
     response.status(201).json(
       await createPhoto({
         userId: request.user!.userId,
-        title: body.fileName.replace(/\.[^.]+$/, ""),
+        title: body.title || body.fileName.replace(/\.[^.]+$/, ""),
+        description: body.description,
+        camera: body.camera,
+        fileSize: body.fileSize,
         storageKey: body.storageKey,
-        thumbnailKey: body.thumbnailKey
+        thumbnailKey: body.storageKey
       })
     );
   } catch (error) {
@@ -241,7 +281,8 @@ photosRouter.get("/photos/:id/download-url", async (request, response, next) => 
       response.status(404).json({ message: "Photo not found" });
       return;
     }
-    response.json({ downloadUrl: await createDownloadUrl(String(photo.storage_key)) });
+    const downloadUrl = await createDownloadUrl(String(photo.storage_key));
+    response.redirect(downloadUrl);
   } catch (error) {
     next(error);
   }

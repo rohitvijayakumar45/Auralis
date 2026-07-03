@@ -4,9 +4,13 @@ import { CommandPalette } from "./components/CommandPalette";
 import { ShortcutLayer } from "./components/ShortcutLayer";
 import { AppShell } from "./components/layout/AppShell";
 import { AuthPage } from "./pages/AuthPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { GalleryPage } from "./pages/GalleryPage";
 import { LandingPage } from "./pages/LandingPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { AlbumsPage } from "./pages/AlbumsPage";
+import { AlbumDetailPage } from "./pages/AlbumDetailPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SimpleCollectionPage } from "./pages/SimpleCollectionPage";
 import { UploadPage } from "./pages/UploadPage";
 import { ViewerPage } from "./pages/ViewerPage";
@@ -32,26 +36,18 @@ export default function App() {
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/signup" element={<AuthPage mode="signup" />} />
             <Route element={<AppShell />}>
-              <Route path="/dashboard" element={<GalleryPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/gallery" element={<GalleryPage />} />
               <Route path="/upload" element={<UploadPage />} />
               <Route path="/viewer/:photoId" element={<ViewerPage />} />
-              <Route
-                path="/albums"
-                element={<SimpleCollectionPage kind="albums" />}
-              />
+              <Route path="/albums" element={<AlbumsPage />} />
+              <Route path="/albums/:albumId" element={<AlbumDetailPage />} />
               <Route
                 path="/favorites"
                 element={<SimpleCollectionPage kind="favorites" />}
               />
-              <Route
-                path="/profile"
-                element={<SimpleCollectionPage kind="profile" />}
-              />
-              <Route
-                path="/settings"
-                element={<SimpleCollectionPage kind="settings" />}
-              />
+              <Route path="/profile" element={<SettingsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

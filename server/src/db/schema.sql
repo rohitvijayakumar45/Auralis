@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS photos (
   is_favorite BOOLEAN DEFAULT FALSE,
   is_archived BOOLEAN DEFAULT FALSE,
   is_deleted BOOLEAN DEFAULT FALSE,
+  file_size BIGINT DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

@@ -23,7 +23,7 @@ function writeTokens(tokens: TokenSet) {
 }
 
 function authHeaders() {
-  const token = readTokens().AccessToken ?? readTokens().IdToken;
+  const token = readTokens().IdToken ?? readTokens().AccessToken;
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -36,7 +36,7 @@ function toPhoto(row: Record<string, unknown>): PhotoAsset {
     description: String(row.description ?? ""),
     storageKey,
     thumbnailKey,
-    src: String(row.src ?? `${import.meta.env.VITE_API_BASE_URL}/photos/${row.id}/download-url`),
+    src: String(row.src ?? `${import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:4000"}/photos/${row.id}/download-url`),
     blurSrc: String(row.blurSrc ?? "https://picsum.photos/seed/auralis-blur/32/24"),
     width: Number(row.width ?? 1600),
     height: Number(row.height ?? 1200),
@@ -79,7 +79,7 @@ function createClient(): AxiosInstance {
             });
             writeTokens({ ...tokens, ...data });
             if (originalRequest.headers) {
-               originalRequest.headers["Authorization"] = `Bearer ${data.AccessToken ?? data.IdToken}`;
+               originalRequest.headers["Authorization"] = `Bearer ${data.IdToken ?? data.AccessToken}`;
             }
             return client(originalRequest);
           } catch (refreshError) {
@@ -115,7 +115,7 @@ export function createAwsApiAdapters(): ServiceRegistry {
         } satisfies User;
       },
       async getDashboardStats() {
-        const { data } = await client.get("/photos/dashboard/stats");
+        const { data } = await client.get("/dashboard/stats");
         return data;
       },
       async getSettings() {
@@ -191,7 +191,8 @@ export function createAwsApiAdapters(): ServiceRegistry {
             filter: search.filter,
             sort: search.sort,
             limit: search.limit,
-            offset: search.offset
+            offset: search.offset,
+            albumId: search.albumId
           }
         });
         return data.map(toPhoto);
@@ -207,9 +208,48 @@ export function createAwsApiAdapters(): ServiceRegistry {
           title: String(album.title),
           description: String(album.description ?? ""),
           coverPhotoId: String(album.coverPhotoId ?? ""),
-          photoIds: [],
+          coverPhotoSrc: album.coverPhotoSrc ? String(album.coverPhotoSrc) : undefined,
+          photoIds: Array.isArray(album.photoIds) ? album.photoIds.map(String) : [],
           updatedAt: String(album.updatedAt ?? new Date().toISOString())
         }));
+      },
+      async getAlbum(id) {
+        const { data } = await client.get(`/albums/${id}`);
+        return {
+          id: String(data.id),
+          title: String(data.title),
+          description: String(data.description ?? ""),
+          coverPhotoId: String(data.coverPhotoId ?? ""),
+          photoIds: Array.isArray(data.photoIds) ? data.photoIds.map(String) : [],
+          updatedAt: String(data.updatedAt ?? new Date().toISOString())
+        };
+      },
+      async createAlbum(title, description) {
+        const { data } = await client.post("/albums", { title, description });
+        return {
+          id: String(data.id),
+          title: String(data.title),
+          description: String(data.description ?? ""),
+          coverPhotoId: String(data.coverPhotoId ?? ""),
+          photoIds: Array.isArray(data.photoIds) ? data.photoIds.map(String) : [],
+          updatedAt: String(data.updatedAt ?? new Date().toISOString())
+        };
+      },
+      async renameAlbum(id, title) {
+        const { data } = await client.patch(`/albums/${id}`, { title });
+        return data;
+      },
+      async deleteAlbum(id) {
+        const { data } = await client.delete(`/albums/${id}`);
+        return data;
+      },
+      async addPhotosToAlbum(id, photoIds) {
+        const { data } = await client.post(`/albums/${id}/photos`, { photoIds });
+        return data;
+      },
+      async removePhotosFromAlbum(id, photoIds) {
+        const { data } = await client.delete(`/albums/${id}/photos`, { data: { photoIds } });
+        return data;
       },
       async toggleFavorite(id, isFavorite) {
         const { data } = await client.patch(`/photos/${id}/favorite`, { isFavorite });
@@ -230,6 +270,10 @@ export function createAwsApiAdapters(): ServiceRegistry {
       async createUploadRecord(item, storageKey, thumbnailKey) {
         const { data } = await client.post("/uploads/complete", {
           fileName: item.fileName,
+          title: item.title,
+          description: item.description,
+          camera: item.camera,
+          fileSize: item.fileSize,
           storageKey,
           thumbnailKey
         });

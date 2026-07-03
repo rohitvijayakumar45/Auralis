@@ -31,7 +31,7 @@ export function ProgressiveImage({
         loading="lazy"
         onLoad={() => setLoaded(true)}
         className={cn(
-          "h-full w-full object-cover transition duration-700 group-hover:scale-105",
+          "h-full w-full object-contain transition duration-700 group-hover:scale-105",
           loaded ? "opacity-100" : "opacity-0"
         )}
       />

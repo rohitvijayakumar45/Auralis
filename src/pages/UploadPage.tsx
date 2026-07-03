@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
+import { useQueryClient } from "@tanstack/react-query";
 import { useServices } from "../hooks/useServices";
+import { photoKeys } from "../hooks/usePhotoData";
 import type { UploadItem } from "../types/domain";
 
 type QueueItem = UploadItem & {
@@ -15,8 +17,8 @@ type QueueItem = UploadItem & {
 
 export function UploadPage() {
   const services = useServices();
+  const queryClient = useQueryClient();
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const processingRef = useRef(false);
 
   const hashFile = async (file: File) => {
     const buffer = await file.arrayBuffer();
@@ -25,77 +27,53 @@ export function UploadPage() {
     return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   };
 
-  const processQueue = useCallback(async () => {
-    if (processingRef.current) return;
-    processingRef.current = true;
+  const processItem = useCallback(async (item: QueueItem) => {
+    const abortController = new AbortController();
+    setQueue(q => q.map(i => i.id === item.id ? { ...i, abortController } : i));
 
-    const processItem = async (item: QueueItem) => {
-      setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "processing" } : i));
+    try {
+      const hash = await hashFile(item.file);
+      setQueue(q => q.map(i => i.id === item.id ? { ...i, hash } : i));
+
+      const upload = await services.storage.createUploadUrl(item.fileName, item.file.type);
+      setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "uploading", progress: 0 } : i));
       
-      const abortController = new AbortController();
-      setQueue(q => q.map(i => i.id === item.id ? { ...i, abortController } : i));
-
-      try {
-        const hash = await hashFile(item.file);
-        setQueue(q => q.map(i => i.id === item.id ? { ...i, hash } : i));
-
-        const upload = await services.storage.createUploadUrl(item.fileName, item.file.type);
-        setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "uploading", progress: 0 } : i));
-        
-        const uploaded = await services.storage.uploadFile(item.file, upload.uploadUrl, {
-          signal: abortController.signal,
-          onProgress: (progress) => {
-            setQueue(q => q.map(i => i.id === item.id ? { ...i, progress } : i));
-          }
-        });
-        
-        const job = await services.processing.requestThumbnailJob(upload.storageKey);
-        await services.metadata.createUploadRecord(
-          { ...uploaded, status: "complete" },
-          upload.storageKey,
-          job.thumbnailKey
-        );
-
-        setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "complete", progress: 100 } : i));
-      } catch (error: unknown) {
-        if (error instanceof Error && (error.name === "AbortError" || error.message === "canceled")) {
-          setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "failed", error: "Canceled" } : i));
-        } else {
-          const errorMessage = error instanceof Error ? error.message : "Failed";
-          setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "failed", error: errorMessage } : i));
+      await services.storage.uploadFile(item.file, upload.uploadUrl, {
+        signal: abortController.signal,
+        onProgress: (progress) => {
+          setQueue(q => q.map(i => i.id === item.id ? { ...i, progress } : i));
         }
-      }
-    };
+      });
+      
+      const job = await services.processing.requestThumbnailJob(upload.storageKey);
+      await services.metadata.createUploadRecord(
+        { ...item, status: "complete", fileSize: item.file.size },
+        upload.storageKey,
+        job.thumbnailKey
+      );
 
-    const runWorkers = async () => {
-      while (true) {
-        let nextItem: QueueItem | undefined;
-        let activeCount = 0;
-        
-        setQueue(currentQueue => {
-          activeCount = currentQueue.filter(i => i.status === "uploading" || i.status === "processing").length;
-          if (activeCount < 3) {
-            nextItem = currentQueue.find(i => i.status === "queued");
-          }
-          return currentQueue;
-        });
-
-        if (nextItem && activeCount < 3) {
-          processItem(nextItem);
-        } else if (activeCount === 0) {
-          processingRef.current = false;
-          break;
-        } else {
-          await new Promise(r => setTimeout(r, 200));
-        }
+      setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "complete", progress: 100 } : i));
+      queryClient.invalidateQueries({ queryKey: photoKeys.dashboardStats });
+    } catch (error: unknown) {
+      if (error instanceof Error && (error.name === "AbortError" || error.message === "canceled")) {
+        setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "failed", error: "Canceled" } : i));
+      } else {
+        const errorMessage = error instanceof Error ? error.message : "Failed";
+        setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "failed", error: errorMessage } : i));
       }
-    };
-    runWorkers();
-  }, [services]);
+    }
+  }, [services, queryClient]);
 
   useEffect(() => {
-    processQueue();
-  }, [queue, processQueue]);
+    const activeCount = queue.filter(i => i.status === "uploading" || i.status === "processing").length;
+    if (activeCount < 3) {
+      const nextItem = queue.find(i => i.status === "queued");
+      if (nextItem) {
+        setQueue(q => q.map(i => i.id === nextItem.id ? { ...i, status: "processing" } : i));
+        processItem(nextItem);
+      }
+    }
+  }, [queue, processItem]);
 
   const dropzone = useDropzone({
     accept: { "image/jpeg": [], "image/png": [], "image/webp": [] },
@@ -107,8 +85,11 @@ export function UploadPage() {
       const newItems = files.map(file => ({
         id: crypto.randomUUID(),
         fileName: file.name,
+        title: file.name.replace(/\.[^.]+$/, ""),
+        description: "",
+        camera: "",
         progress: 0,
-        status: "queued" as const,
+        status: "draft" as const,
         file
       }));
       setQueue(q => [...newItems, ...q]);
@@ -157,7 +138,14 @@ export function UploadPage() {
       </section>
       {queue.length ? (
         <section className="mt-8 rounded-[2rem] bg-bone p-6 shadow-soft">
-          <h2 className="font-serif text-3xl font-semibold">Upload queue</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-3xl font-semibold">Upload queue</h2>
+            {queue.some(i => i.status === "draft") && (
+              <Button onClick={() => setQueue(q => q.map(i => i.status === "draft" ? { ...i, status: "queued" } : i))}>
+                Start Upload
+              </Button>
+            )}
+          </div>
           <div className="mt-5 space-y-3">
             {queue.map((item) => (
               <div key={item.id} className="rounded-2xl bg-ivory p-4">
@@ -169,11 +157,51 @@ export function UploadPage() {
                     {item.status === "failed" && (
                       <button onClick={() => retry(item.id)} className="text-charcoal/60 hover:text-charcoal"><RefreshCw size={16} /></button>
                     )}
-                    {(item.status === "queued" || item.status === "uploading" || item.status === "processing") && (
+                    {(item.status === "draft" || item.status === "queued" || item.status === "uploading" || item.status === "processing") && (
                       <button onClick={() => cancel(item.id)} className="text-charcoal/60 hover:text-charcoal"><X size={16} /></button>
                     )}
                   </div>
                 </div>
+                {item.status === "draft" && (
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <label className="block">
+                      <span className="text-xs font-medium text-charcoal/70">Title</span>
+                      <input
+                        type="text"
+                        value={item.title || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setQueue(q => q.map(i => i.id === item.id ? { ...i, title: val } : i));
+                        }}
+                        className="focus-ring mt-1 w-full rounded-xl border border-charcoal/10 bg-bone px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-charcoal/70">Description (Optional)</span>
+                      <input
+                        type="text"
+                        value={item.description || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setQueue(q => q.map(i => i.id === item.id ? { ...i, description: val } : i));
+                        }}
+                        className="focus-ring mt-1 w-full rounded-xl border border-charcoal/10 bg-bone px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-charcoal/70">Camera (Optional)</span>
+                      <input
+                        type="text"
+                        value={item.camera || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setQueue(q => q.map(i => i.id === item.id ? { ...i, camera: val } : i));
+                        }}
+                        className="focus-ring mt-1 w-full rounded-xl border border-charcoal/10 bg-bone px-3 py-2 text-sm"
+                      />
+                    </label>
+                  </div>
+                )}
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-linen">
                   <div
                     className={`h-full rounded-full transition-all ${item.status === 'failed' ? 'bg-red-500' : 'bg-olive'}`}

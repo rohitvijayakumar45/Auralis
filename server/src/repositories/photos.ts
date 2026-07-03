@@ -8,6 +8,7 @@ type SearchInput = {
   sort: string;
   limit?: number;
   offset?: number;
+  albumId?: string;
 };
 
 function orderBy(sort: string) {
@@ -21,6 +22,10 @@ export async function listPhotos(userId: string, search: SearchInput) {
   const params: Record<string, unknown> = { userId };
   if (search.filter === "favorites") conditions.push("is_favorite = TRUE");
   if (search.filter === "archive") conditions.push("is_archived = TRUE");
+  if (search.albumId) {
+    conditions.push("id IN (SELECT photo_id FROM album_photos WHERE album_id = :albumId)");
+    params.albumId = search.albumId;
+  }
   if (search.query) {
     conditions.push(
       "(title LIKE :query OR description LIKE :query OR location LIKE :query OR camera LIKE :query)"
@@ -50,24 +55,28 @@ export async function getPhoto(userId: string, id: string) {
 export async function createPhoto(input: {
   userId: string;
   title: string;
+  description?: string;
+  camera?: string;
+  fileSize?: number;
   storageKey: string;
   thumbnailKey?: string;
 }) {
   const id = randomUUID();
   await pool.execute(
     `INSERT INTO photos
-      (id, user_id, title, description, storage_key, thumbnail_key, captured_at, location, camera)
+      (id, user_id, title, description, storage_key, thumbnail_key, captured_at, location, camera, file_size)
      VALUES
-      (:id, :userId, :title, :description, :storageKey, :thumbnailKey, NOW(), :location, :camera)`,
+      (:id, :userId, :title, :description, :storageKey, :thumbnailKey, NOW(), :location, :camera, :fileSize)`,
     {
       id,
       userId: input.userId,
       title: input.title,
-      description: "Uploaded to Auralis and ready for curation.",
+      description: input.description || "Uploaded to Auralis and ready for curation.",
       storageKey: input.storageKey,
       thumbnailKey: input.thumbnailKey ?? null,
       location: "Imported",
-      camera: "Unknown"
+      camera: input.camera || "Unknown",
+      fileSize: input.fileSize || 0
     }
   );
   return getPhoto(input.userId, id);
@@ -94,13 +103,37 @@ export async function renamePhoto(userId: string, id: string, title: string) {
   return getPhoto(userId, id);
 }
 
+export async function getAlbum(userId: string, id: string) {
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT a.id, a.title, a.description, a.cover_photo_id AS coverPhotoId, a.updated_at AS updatedAt, IFNULL(GROUP_CONCAT(ap.photo_id), '') AS photoIdsString
+     FROM albums a LEFT JOIN album_photos ap ON a.id = ap.album_id
+     WHERE a.user_id = :userId AND a.id = :id
+     GROUP BY a.id LIMIT 1`,
+    { userId, id }
+  );
+  if (!rows[0]) return undefined;
+  return {
+    ...rows[0],
+    photoIds: rows[0].photoIdsString ? rows[0].photoIdsString.split(",") : []
+  };
+}
+
 export async function listAlbums(userId: string) {
-  const [rows] = await pool.execute(
-    `SELECT id, title, description, cover_photo_id AS coverPhotoId, updated_at AS updatedAt
-     FROM albums WHERE user_id = :userId ORDER BY updated_at DESC`,
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    `SELECT a.id, a.title, a.description, a.cover_photo_id AS coverPhotoId, a.updated_at AS updatedAt, 
+            IFNULL(GROUP_CONCAT(ap.photo_id), '') AS photoIdsString,
+            (SELECT storage_key FROM photos WHERE id = COALESCE(a.cover_photo_id, (SELECT photo_id FROM album_photos WHERE album_id = a.id LIMIT 1))) AS coverStorageKey
+     FROM albums a LEFT JOIN album_photos ap ON a.id = ap.album_id
+     WHERE a.user_id = :userId
+     GROUP BY a.id
+     ORDER BY a.updated_at DESC`,
     { userId }
   );
-  return rows;
+  return rows.map(row => ({
+    ...row,
+    photoIds: row.photoIdsString ? row.photoIdsString.split(",") : [],
+    coverStorageKey: row.coverStorageKey || null
+  }));
 }
 
 export async function createAlbum(userId: string, title: string, description: string = "") {
@@ -147,7 +180,7 @@ export async function removePhotosFromAlbum(userId: string, albumId: string, pho
 }
 
 export async function getDashboardStats(userId: string) {
-  const [photos] = await pool.execute<RowDataPacket[]>("SELECT COUNT(*) as count, SUM(IFNULL(width * height * 3, 0)) as storage FROM photos WHERE user_id = :userId AND is_deleted = FALSE", { userId });
+  const [photos] = await pool.execute<RowDataPacket[]>("SELECT COUNT(*) as count, SUM(IFNULL(file_size, IFNULL(width * height * 3, 0))) as storage FROM photos WHERE user_id = :userId AND is_deleted = FALSE", { userId });
   const [albums] = await pool.execute<RowDataPacket[]>("SELECT COUNT(*) as count FROM albums WHERE user_id = :userId", { userId });
   const [favorites] = await pool.execute<RowDataPacket[]>("SELECT COUNT(*) as count FROM photos WHERE user_id = :userId AND is_favorite = TRUE AND is_deleted = FALSE", { userId });
   return {

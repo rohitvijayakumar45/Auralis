@@ -20,11 +20,24 @@ export async function upsertUserFromClaims(input: {
     { sub: input.sub }
   );
   if (existing[0]) {
+    const user = existing[0];
+    if (user.name === user.cognito_sub && input.name && input.name !== user.cognito_sub) {
+      await pool.execute(
+        "UPDATE users SET name = :name, email = :email WHERE id = :userId",
+        { name: input.name, email: input.email, userId: user.id }
+      );
+      return {
+        sub: user.cognito_sub,
+        email: input.email,
+        name: input.name,
+        userId: user.id
+      };
+    }
     return {
-      sub: existing[0].cognito_sub,
-      email: existing[0].email,
-      name: existing[0].name,
-      userId: existing[0].id
+      sub: user.cognito_sub,
+      email: user.email,
+      name: user.name,
+      userId: user.id
     };
   }
 

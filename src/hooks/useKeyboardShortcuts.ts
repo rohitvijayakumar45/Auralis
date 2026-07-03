@@ -10,6 +10,11 @@ type Shortcut = {
 export function useKeyboardShortcuts(shortcuts: Shortcut[]) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
+        return;
+      }
+      
       const match = shortcuts.find((shortcut) => {
         const keyMatches = event.key.toLowerCase() === shortcut.key.toLowerCase();
         const metaMatches = shortcut.meta

@@ -9,18 +9,21 @@ export function PhotoCard({
   view,
   onFavorite,
   onArchive,
-  onDelete
+  onDelete,
+  customActions
 }: {
   photo: PhotoAsset;
   view: "grid" | "list";
   onFavorite: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  customActions?: { label: string; icon: any; run: () => void; danger?: boolean }[];
 }) {
   const actions = [
+    ...(customActions || []),
     { label: photo.isFavorite ? "Remove favorite" : "Favorite", icon: Heart, run: onFavorite },
     { label: photo.isArchived ? "Restore" : "Archive", icon: Archive, run: onArchive },
-    { label: "Delete", icon: Trash2, run: onDelete }
+    { label: "Delete", icon: Trash2, run: onDelete, danger: true }
   ];
 
   return (
@@ -67,7 +70,10 @@ export function PhotoCard({
               key={action.label}
               type="button"
               onClick={action.run}
-              className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-charcoal hover:bg-charcoal/5"
+              className={cn(
+                "focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-charcoal/5",
+                action.danger ? "text-red-600 hover:bg-red-50" : "text-charcoal"
+              )}
             >
               <action.icon className="h-4 w-4" />
               {action.label}

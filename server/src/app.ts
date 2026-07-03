@@ -30,7 +30,8 @@ export function createApp() {
     ) => {
       void _next;
       if (error instanceof ZodError) {
-        response.status(400).json({ message: "Invalid request", issues: error.issues });
+        const issuesMessage = error.issues.map(i => i.message).join(" ");
+        response.status(400).json({ message: issuesMessage, issues: error.issues });
         return;
       }
       const message = error instanceof Error ? error.message : "Unexpected server error";

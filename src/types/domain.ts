@@ -33,6 +33,7 @@ export type Album = {
   title: string;
   description: string;
   coverPhotoId: string;
+  coverPhotoSrc?: string;
   photoIds: string[];
   updatedAt: string;
 };
@@ -47,8 +48,12 @@ export type Collection = {
 export type UploadItem = {
   id: string;
   fileName: string;
+  title?: string;
+  description?: string;
+  camera?: string;
+  fileSize?: number;
   progress: number;
-  status: "queued" | "uploading" | "processing" | "complete" | "failed";
+  status: "draft" | "queued" | "uploading" | "processing" | "complete" | "failed";
 };
 
 export type SearchState = {
@@ -58,6 +63,7 @@ export type SearchState = {
   view: "grid" | "list";
   limit?: number;
   offset?: number;
+  albumId?: string;
 };
 
 export type ActivityEvent = {
