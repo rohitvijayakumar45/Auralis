@@ -8,7 +8,13 @@ import {
   listAlbums,
   listPhotos,
   patchPhotoFlag,
-  renamePhoto
+  renamePhoto,
+  createAlbum,
+  renameAlbum,
+  deleteAlbum,
+  addPhotosToAlbum,
+  removePhotosFromAlbum,
+  getDashboardStats
 } from "../repositories/photos.js";
 import { buildPhotoStorageKey, buildThumbnailStorageKey } from "../s3/keyBuilder.js";
 import { createDownloadUrl, createUploadUrl } from "../s3/service.js";
@@ -22,13 +28,17 @@ photosRouter.get("/photos", async (request, response, next) => {
       .object({
         q: z.string().default(""),
         filter: z.string().default("all"),
-        sort: z.string().default("newest")
+        sort: z.string().default("newest"),
+        limit: z.coerce.number().optional(),
+        offset: z.coerce.number().optional()
       })
       .parse(request.query);
     const rows = await listPhotos(request.user!.userId, {
       query: query.q,
       filter: query.filter,
-      sort: query.sort
+      sort: query.sort,
+      limit: query.limit,
+      offset: query.offset
     });
     response.json(rows);
   } catch (error) {
@@ -124,6 +134,58 @@ photosRouter.patch("/photos/:id", async (request, response, next) => {
 photosRouter.get("/albums", async (request, response, next) => {
   try {
     response.json(await listAlbums(request.user!.userId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.post("/albums", async (request, response, next) => {
+  try {
+    const body = z.object({ title: z.string().min(1), description: z.string().optional() }).parse(request.body);
+    response.status(201).json(await createAlbum(request.user!.userId, body.title, body.description));
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.patch("/albums/:id", async (request, response, next) => {
+  try {
+    const body = z.object({ title: z.string().min(1) }).parse(request.body);
+    response.json(await renameAlbum(request.user!.userId, request.params.id, body.title));
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.delete("/albums/:id", async (request, response, next) => {
+  try {
+    response.json(await deleteAlbum(request.user!.userId, request.params.id));
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.post("/albums/:id/photos", async (request, response, next) => {
+  try {
+    const body = z.object({ photoIds: z.array(z.string()) }).parse(request.body);
+    response.json(await addPhotosToAlbum(request.user!.userId, request.params.id, body.photoIds));
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.delete("/albums/:id/photos", async (request, response, next) => {
+  try {
+    const body = z.object({ photoIds: z.array(z.string()) }).parse(request.body);
+    response.json(await removePhotosFromAlbum(request.user!.userId, request.params.id, body.photoIds));
+  } catch (error) {
+    next(error);
+  }
+});
+
+photosRouter.get("/dashboard/stats", async (request, response, next) => {
+  try {
+    response.json(await getDashboardStats(request.user!.userId));
   } catch (error) {
     next(error);
   }

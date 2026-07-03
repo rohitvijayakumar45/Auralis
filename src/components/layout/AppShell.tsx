@@ -56,11 +56,17 @@ export function AppShell() {
         </nav>
         <div className="absolute inset-x-4 bottom-4 rounded-[1.5rem] bg-bone p-4">
           <div className="flex items-center gap-3">
-            <img
-              src={user?.avatarUrl}
-              alt=""
-              className="h-10 w-10 rounded-full object-cover"
-            />
+            {user?.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt=""
+                className="h-10 w-10 rounded-full object-cover"
+              />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-charcoal text-sm font-medium text-bone">
+                {user?.name ? user.name.slice(0, 2).toUpperCase() : "U"}
+              </div>
+            )}
             <div>
               <p className="text-sm font-semibold">{user?.name ?? "Loading"}</p>
               <p className="text-xs text-charcoal/50">

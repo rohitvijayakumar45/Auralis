@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Grid2X2, List, Search } from "lucide-react";
 import { EmptyState } from "../components/EmptyState";
 import { PhotoCard } from "../components/PhotoCard";
@@ -7,8 +8,23 @@ import { usePersistentSearchState } from "../hooks/useSearchState";
 
 export function GalleryPage() {
   const [search, setSearch] = usePersistentSearchState();
-  const { data: photos = [], isLoading } = usePhotos(search);
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = usePhotos(search);
   const actions = usePhotoActions(search);
+  const photos = data?.pages.flatMap(page => page) ?? [];
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1, rootMargin: '400px' }
+    );
+    if (loadMoreRef.current) observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
     <div className="min-h-screen px-4 py-8 md:px-8 lg:px-10">
@@ -120,6 +136,7 @@ export function GalleryPage() {
             ))}
           </div>
         )}
+        <div ref={loadMoreRef} className="h-10 mt-10" />
       </section>
     </div>
   );

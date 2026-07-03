@@ -54,7 +54,8 @@ function toPhoto(row: Record<string, unknown>): PhotoAsset {
 
 function createClient(): AxiosInstance {
   const client = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:4000"
+    baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:4000",
+    timeout: 30000
   });
   client.interceptors.request.use((config) => {
     const headers = new AxiosHeaders(config.headers);
@@ -63,6 +64,38 @@ function createClient(): AxiosInstance {
     config.headers = headers;
     return config;
   });
+  
+  client.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const originalRequest = error.config;
+      if (error.response?.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true;
+        const tokens = readTokens();
+        if (tokens.RefreshToken) {
+          try {
+            const { data } = await axios.post(`${client.defaults.baseURL}/auth/refresh`, {
+              refreshToken: tokens.RefreshToken
+            });
+            writeTokens({ ...tokens, ...data });
+            if (originalRequest.headers) {
+               originalRequest.headers["Authorization"] = `Bearer ${data.AccessToken ?? data.IdToken}`;
+            }
+            return client(originalRequest);
+          } catch (refreshError) {
+            localStorage.removeItem(tokenKey);
+            window.location.href = "/login";
+            return Promise.reject(refreshError);
+          }
+        } else {
+          localStorage.removeItem(tokenKey);
+          window.location.href = "/login";
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+
   return client;
 }
 
@@ -80,6 +113,18 @@ export function createAwsApiAdapters(): ServiceRegistry {
           storageUsedGb: Number(data.storageUsedBytes ?? 0) / 1_073_741_824,
           storageLimitGb: Number(data.storageLimitBytes ?? 137_438_953_472) / 1_073_741_824
         } satisfies User;
+      },
+      async getDashboardStats() {
+        const { data } = await client.get("/photos/dashboard/stats");
+        return data;
+      },
+      async getSettings() {
+        const { data } = await client.get("/auth/settings");
+        return data;
+      },
+      async updateSettings(settings: unknown) {
+        const { data } = await client.patch("/auth/settings", settings);
+        return data;
       },
       async login(email, password) {
         const { data } = await client.post("/auth/login", { email, password });
@@ -99,6 +144,7 @@ export function createAwsApiAdapters(): ServiceRegistry {
       },
       async logout() {
         localStorage.removeItem(tokenKey);
+        window.location.href = "/login";
       }
     },
     storage: {
@@ -109,9 +155,15 @@ export function createAwsApiAdapters(): ServiceRegistry {
         });
         return data;
       },
-      async uploadFile(file: File, uploadUrl: string) {
+      async uploadFile(file: File, uploadUrl: string, options?: { onProgress?: (progress: number) => void; signal?: AbortSignal }) {
         await axios.put(uploadUrl, file, {
-          headers: { "Content-Type": file.type || "image/jpeg" }
+          headers: { "Content-Type": file.type || "image/jpeg" },
+          signal: options?.signal,
+          onUploadProgress: (progressEvent) => {
+            if (options?.onProgress && progressEvent.total) {
+              options.onProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
+            }
+          }
         });
         return {
           id: crypto.randomUUID(),
@@ -137,7 +189,9 @@ export function createAwsApiAdapters(): ServiceRegistry {
           params: {
             q: search.query,
             filter: search.filter,
-            sort: search.sort
+            sort: search.sort,
+            limit: search.limit,
+            offset: search.offset
           }
         });
         return data.map(toPhoto);

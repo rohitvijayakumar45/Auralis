@@ -33,8 +33,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
             {mode === "signup" ? "Begin a private archive." : "Return to your archive."}
           </h1>
           <p className="mt-5 text-charcoal/62">
-            This form talks to the auth contract today and can be backed by AWS
-            Cognito later without UI changes.
+            Securely access your private archive.
           </p>
           <form onSubmit={submit} className="mt-10 space-y-4">
             {mode === "signup" ? (
@@ -53,7 +52,6 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
                 name="email"
                 type="email"
                 required
-                defaultValue="mira@auralis.photos"
                 className="focus-ring mt-2 w-full rounded-2xl border border-charcoal/10 bg-ivory px-4 py-3"
               />
             </label>
@@ -63,7 +61,6 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
                 name="password"
                 type="password"
                 required
-                defaultValue="auralis-demo"
                 className="focus-ring mt-2 w-full rounded-2xl border border-charcoal/10 bg-ivory px-4 py-3"
               />
             </label>

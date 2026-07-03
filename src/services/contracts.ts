@@ -2,6 +2,9 @@ import type { Album, PhotoAsset, SearchState, UploadItem, User } from "../types/
 
 export type AuthService = {
   getCurrentUser: () => Promise<User>;
+  getDashboardStats: () => Promise<{ photoCount: number; albumCount: number; favoriteCount: number; storageUsedBytes: number }>;
+  getSettings: () => Promise<unknown>;
+  updateSettings: (settings: unknown) => Promise<unknown>;
   login: (email: string, password: string) => Promise<User>;
   signup: (name: string, email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
@@ -9,7 +12,7 @@ export type AuthService = {
 
 export type StorageService = {
   createUploadUrl: (fileName: string, contentType?: string) => Promise<{ uploadUrl: string; storageKey: string; thumbnailKey?: string }>;
-  uploadFile: (file: File, uploadUrl: string) => Promise<UploadItem>;
+  uploadFile: (file: File, uploadUrl: string, options?: { onProgress?: (progress: number) => void; signal?: AbortSignal }) => Promise<UploadItem>;
 };
 
 export type ProcessingService = {

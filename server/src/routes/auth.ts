@@ -7,7 +7,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getConfig } from "../config.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getUserProfile } from "../repositories/users.js";
+import { getUserProfile, getUserSettings, updateUserSettings } from "../repositories/users.js";
 
 const config = getConfig();
 const cognito = new CognitoIdentityProviderClient({ region: config.aws.region });
@@ -64,6 +64,24 @@ authRouter.post("/login", async (request, response, next) => {
   }
 });
 
+authRouter.post("/refresh", async (request, response, next) => {
+  try {
+    const body = z.object({ refreshToken: z.string().min(1) }).parse(request.body);
+    const result = await cognito.send(
+      new InitiateAuthCommand({
+        ClientId: config.aws.cognitoAppClientId,
+        AuthFlow: "REFRESH_TOKEN_AUTH",
+        AuthParameters: {
+          REFRESH_TOKEN: body.refreshToken
+        }
+      })
+    );
+    response.json(result.AuthenticationResult);
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRouter.get("/me", requireAuth, async (request, response, next) => {
   try {
     const profile = await getUserProfile(request.user!.userId);
@@ -72,3 +90,22 @@ authRouter.get("/me", requireAuth, async (request, response, next) => {
     next(error);
   }
 });
+
+authRouter.get("/settings", requireAuth, async (request, response, next) => {
+  try {
+    const settings = await getUserSettings(request.user!.userId);
+    response.json(settings);
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.patch("/settings", requireAuth, async (request, response, next) => {
+  try {
+    const settings = await updateUserSettings(request.user!.userId, request.body);
+    response.json(settings);
+  } catch (error) {
+    next(error);
+  }
+});
+

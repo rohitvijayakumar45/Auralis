@@ -56,6 +56,8 @@ export type SearchState = {
   filter: "all" | "favorites" | "albums" | "archive";
   sort: "newest" | "oldest" | "name";
   view: "grid" | "list";
+  limit?: number;
+  offset?: number;
 };
 
 export type ActivityEvent = {

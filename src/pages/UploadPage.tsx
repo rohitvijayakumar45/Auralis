@@ -1,45 +1,131 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud } from "lucide-react";
+import { UploadCloud, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { useServices } from "../hooks/useServices";
 import type { UploadItem } from "../types/domain";
 
+type QueueItem = UploadItem & {
+  file: File;
+  abortController?: AbortController;
+  hash?: string;
+  error?: string;
+};
+
 export function UploadPage() {
   const services = useServices();
-  const [queue, setQueue] = useState<UploadItem[]>([]);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const processingRef = useRef(false);
 
-  const dropzone = useDropzone({
-    accept: { "image/*": [] },
-    onDrop: async (files) => {
-      for (const file of files) {
-        const pending: UploadItem = {
-          id: crypto.randomUUID(),
-          fileName: file.name,
-          progress: 12,
-          status: "queued"
-        };
-        setQueue((queue) => [pending, ...queue]);
-        const upload = await services.storage.createUploadUrl(file.name, file.type);
-        const uploaded = await services.storage.uploadFile(file, upload.uploadUrl);
+  const hashFile = async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  const processQueue = useCallback(async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+
+    const processItem = async (item: QueueItem) => {
+      setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "processing" } : i));
+      
+      const abortController = new AbortController();
+      setQueue(q => q.map(i => i.id === item.id ? { ...i, abortController } : i));
+
+      try {
+        const hash = await hashFile(item.file);
+        setQueue(q => q.map(i => i.id === item.id ? { ...i, hash } : i));
+
+        const upload = await services.storage.createUploadUrl(item.fileName, item.file.type);
+        setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "uploading", progress: 0 } : i));
+        
+        const uploaded = await services.storage.uploadFile(item.file, upload.uploadUrl, {
+          signal: abortController.signal,
+          onProgress: (progress) => {
+            setQueue(q => q.map(i => i.id === item.id ? { ...i, progress } : i));
+          }
+        });
+        
         const job = await services.processing.requestThumbnailJob(upload.storageKey);
         await services.metadata.createUploadRecord(
           { ...uploaded, status: "complete" },
           upload.storageKey,
           job.thumbnailKey
         );
-        setQueue((queue) =>
-          queue.map((item) =>
-            item.id === pending.id
-              ? { ...item, progress: 100, status: "complete" }
-              : item
-          )
-        );
+
+        setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "complete", progress: 100 } : i));
+      } catch (error: unknown) {
+        if (error instanceof Error && (error.name === "AbortError" || error.message === "canceled")) {
+          setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "failed", error: "Canceled" } : i));
+        } else {
+          const errorMessage = error instanceof Error ? error.message : "Failed";
+          setQueue(q => q.map(i => i.id === item.id ? { ...i, status: "failed", error: errorMessage } : i));
+        }
       }
-      toast.success("Upload queue completed");
+    };
+
+    const runWorkers = async () => {
+      while (true) {
+        let nextItem: QueueItem | undefined;
+        let activeCount = 0;
+        
+        setQueue(currentQueue => {
+          activeCount = currentQueue.filter(i => i.status === "uploading" || i.status === "processing").length;
+          if (activeCount < 3) {
+            nextItem = currentQueue.find(i => i.status === "queued");
+          }
+          return currentQueue;
+        });
+
+        if (nextItem && activeCount < 3) {
+          processItem(nextItem);
+        } else if (activeCount === 0) {
+          processingRef.current = false;
+          break;
+        } else {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+    };
+    runWorkers();
+  }, [services]);
+
+  useEffect(() => {
+    processQueue();
+  }, [queue, processQueue]);
+
+  const dropzone = useDropzone({
+    accept: { "image/jpeg": [], "image/png": [], "image/webp": [] },
+    onDrop: async (files, fileRejections) => {
+      if (fileRejections.length > 0) {
+        toast.error(`${fileRejections.length} files unsupported or too large`);
+      }
+      
+      const newItems = files.map(file => ({
+        id: crypto.randomUUID(),
+        fileName: file.name,
+        progress: 0,
+        status: "queued" as const,
+        file
+      }));
+      setQueue(q => [...newItems, ...q]);
     }
   });
+
+  const retry = (id: string) => {
+    setQueue(q => q.map(i => i.id === id ? { ...i, status: "queued", progress: 0, error: undefined } : i));
+  };
+
+  const cancel = (id: string) => {
+    setQueue(q => {
+      const item = q.find(i => i.id === id);
+      if (item?.abortController) item.abortController.abort();
+      return q.map(i => i.id === id ? { ...i, status: "failed", error: "Canceled" } : i);
+    });
+  };
 
   return (
     <div className="min-h-screen px-4 py-8 md:px-8 lg:px-10">
@@ -52,9 +138,7 @@ export function UploadPage() {
             Drop a folder. Keep the rhythm.
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-charcoal/62">
-            The uploader requests a storage URL, sends the file, asks processing
-            for a thumbnail, then writes metadata through the same contracts
-            future AWS services will implement.
+            Secure, concurrent uploads to your private S3 buckets. Automatic duplicate detection and thumbnail generation included.
           </p>
           <div
             {...dropzone.getRootProps()}
@@ -63,7 +147,7 @@ export function UploadPage() {
             <input {...dropzone.getInputProps()} />
             <p className="text-lg font-semibold">Drag images here or browse</p>
             <p className="mt-2 text-sm text-charcoal/55">
-              Touch devices can tap this area to choose files.
+              Supports JPEG, PNG, WEBP. Touch devices can tap this area to choose files.
             </p>
             <Button className="mt-6" type="button">
               Choose photos
@@ -77,13 +161,22 @@ export function UploadPage() {
           <div className="mt-5 space-y-3">
             {queue.map((item) => (
               <div key={item.id} className="rounded-2xl bg-ivory p-4">
-                <div className="flex justify-between text-sm font-medium">
-                  <span>{item.fileName}</span>
-                  <span>{item.status}</span>
+                <div className="flex justify-between items-center text-sm font-medium">
+                  <span className="truncate max-w-[60%]">{item.fileName}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="capitalize">{item.status}</span>
+                    {item.error && <span className="text-red-500 text-xs">({item.error})</span>}
+                    {item.status === "failed" && (
+                      <button onClick={() => retry(item.id)} className="text-charcoal/60 hover:text-charcoal"><RefreshCw size={16} /></button>
+                    )}
+                    {(item.status === "queued" || item.status === "uploading" || item.status === "processing") && (
+                      <button onClick={() => cancel(item.id)} className="text-charcoal/60 hover:text-charcoal"><X size={16} /></button>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-linen">
                   <div
-                    className="h-full rounded-full bg-olive transition-all"
+                    className={`h-full rounded-full transition-all ${item.status === 'failed' ? 'bg-red-500' : 'bg-olive'}`}
                     style={{ width: `${item.progress}%` }}
                   />
                 </div>

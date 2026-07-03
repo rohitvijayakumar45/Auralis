@@ -55,3 +55,14 @@ CREATE TABLE IF NOT EXISTS photo_tags (
   PRIMARY KEY (photo_id, tag),
   FOREIGN KEY (photo_id) REFERENCES photos(id)
 );
+
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id VARCHAR(128) PRIMARY KEY,
+  theme VARCHAR(50) DEFAULT 'system',
+  gallery_density VARCHAR(50) DEFAULT 'comfortable',
+  sort_order VARCHAR(50) DEFAULT 'newest',
+  language VARCHAR(50) DEFAULT 'en',
+  default_album_id VARCHAR(128),
+  upload_quality VARCHAR(50) DEFAULT 'high',
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);

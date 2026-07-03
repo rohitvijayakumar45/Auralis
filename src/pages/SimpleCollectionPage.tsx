@@ -1,7 +1,8 @@
 import { Settings, Star, UserRound, Images } from "lucide-react";
 import { EmptyState } from "../components/EmptyState";
 import { ProgressiveImage } from "../components/ProgressiveImage";
-import { useAlbums, useCurrentUser, usePhotos } from "../hooks/usePhotoData";
+import { useAlbums, useCurrentUser, usePhotos, useDashboardStats, useSettings, useUpdateSettings } from "../hooks/usePhotoData";
+import { useServices } from "../hooks/useServices";
 import { parseSearchState } from "../lib/searchState";
 
 const copy = {
@@ -35,10 +36,11 @@ export function SimpleCollectionPage({
   const content = copy[kind];
   const { data: albums = [] } = useAlbums();
   const { data: user } = useCurrentUser();
-  const { data: favoritePhotos = [] } = usePhotos({
+  const { data: favoritePhotosData } = usePhotos({
     ...parseSearchState(new URLSearchParams()),
     filter: "favorites"
   });
+  const favoritePhotos = favoritePhotosData?.pages.flatMap(p => p) ?? [];
 
   return (
     <div className="min-h-screen px-4 py-8 md:px-8 lg:px-10">
@@ -99,7 +101,7 @@ export function SimpleCollectionPage({
         )
       ) : null}
 
-      {kind === "profile" || kind === "settings" ? (
+      {kind === "profile" ? (
         <section className="mt-8 grid gap-5 md:grid-cols-2">
           <article className="rounded-[2rem] bg-bone p-8 shadow-soft">
             <h2 className="font-serif text-4xl font-semibold">
@@ -117,16 +119,99 @@ export function SimpleCollectionPage({
               />
             </div>
           </article>
-          <article className="rounded-[2rem] bg-charcoal p-8 text-bone shadow-soft">
-            <h2 className="font-serif text-4xl font-semibold">Cloud readiness</h2>
-            <p className="mt-4 leading-7 text-bone/65">
-              Cognito identity, S3 storage, Lambda thumbnails, RDS metadata, and
-              Express transport can replace the adapters behind the same UI
-              contract.
-            </p>
-          </article>
+          <DashboardStats />
         </section>
       ) : null}
+
+      {kind === "settings" ? (
+        <SettingsView />
+      ) : null}
     </div>
+  );
+}
+
+function DashboardStats() {
+  const { data: stats } = useDashboardStats();
+  const services = useServices();
+  if (!stats) return null;
+  return (
+    <article className="rounded-[2rem] bg-charcoal p-8 text-bone shadow-soft flex flex-col justify-between">
+      <div>
+        <h2 className="font-serif text-4xl font-semibold">Dashboard</h2>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-sm text-bone/60">Photos</p>
+            <p className="text-2xl font-semibold">{stats.photoCount}</p>
+          </div>
+          <div>
+            <p className="text-sm text-bone/60">Albums</p>
+            <p className="text-2xl font-semibold">{stats.albumCount}</p>
+          </div>
+          <div>
+            <p className="text-sm text-bone/60">Favorites</p>
+            <p className="text-2xl font-semibold">{stats.favoriteCount}</p>
+          </div>
+          <div>
+            <p className="text-sm text-bone/60">Storage</p>
+            <p className="text-2xl font-semibold">{(stats.storageUsedBytes / 1_073_741_824).toFixed(2)} GB</p>
+          </div>
+        </div>
+      </div>
+      <button 
+        onClick={() => services.auth.logout()} 
+        className="mt-6 self-start rounded-full bg-bone px-5 py-2 text-sm font-semibold text-charcoal hover:bg-ivory"
+      >
+        Sign out
+      </button>
+    </article>
+  );
+}
+
+function SettingsView() {
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
+
+  if (!settings) return null;
+
+  return (
+    <section className="mt-8 max-w-2xl">
+      <div className="rounded-[2rem] bg-bone p-8 shadow-soft space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-charcoal/70">Theme</label>
+          <select 
+            value={settings.theme} 
+            onChange={e => updateSettings.mutate({ theme: e.target.value })}
+            className="mt-2 block w-full rounded-2xl border border-charcoal/10 bg-ivory px-4 py-3"
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-charcoal/70">Gallery Density</label>
+          <select 
+            value={settings.galleryDensity} 
+            onChange={e => updateSettings.mutate({ galleryDensity: e.target.value })}
+            className="mt-2 block w-full rounded-2xl border border-charcoal/10 bg-ivory px-4 py-3"
+          >
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-charcoal/70">Sort Order</label>
+          <select 
+            value={settings.sortOrder} 
+            onChange={e => updateSettings.mutate({ sortOrder: e.target.value })}
+            className="mt-2 block w-full rounded-2xl border border-charcoal/10 bg-ivory px-4 py-3"
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Name</option>
+          </select>
+        </div>
+      </div>
+    </section>
   );
 }

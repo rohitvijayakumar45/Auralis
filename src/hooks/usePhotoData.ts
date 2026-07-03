@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useServices } from "./useServices";
 import type { PhotoAsset, SearchState } from "../types/domain";
@@ -8,7 +8,9 @@ export const photoKeys = {
   list: (search: SearchState) => [...photoKeys.all, search] as const,
   detail: (id: string) => [...photoKeys.all, "detail", id] as const,
   albums: ["albums"] as const,
-  user: ["user"] as const
+  user: ["user"] as const,
+  dashboardStats: ["dashboardStats"] as const,
+  settings: ["settings"] as const
 };
 
 export function useCurrentUser() {
@@ -21,9 +23,13 @@ export function useCurrentUser() {
 
 export function usePhotos(search: SearchState) {
   const services = useServices();
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: photoKeys.list(search),
-    queryFn: () => services.metadata.listPhotos(search)
+    queryFn: ({ pageParam = 0 }) => services.metadata.listPhotos({ ...search, offset: pageParam, limit: 50 }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.length === 50 ? allPages.length * 50 : undefined;
+    }
   });
 }
 
@@ -43,15 +49,56 @@ export function useAlbums() {
   });
 }
 
+export function useDashboardStats() {
+  const services = useServices();
+  return useQuery({
+    queryKey: photoKeys.dashboardStats,
+    queryFn: services.auth.getDashboardStats
+  });
+}
+
+export function useSettings() {
+  const services = useServices();
+  return useQuery({
+    queryKey: photoKeys.settings,
+    queryFn: services.auth.getSettings
+  });
+}
+
+export function useUpdateSettings() {
+  const services = useServices();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: services.auth.updateSettings,
+    onSuccess: (data) => {
+      queryClient.setQueryData(photoKeys.settings, data);
+      toast.success("Settings updated");
+    }
+  });
+}
+
 function patchPhotoInCache(
   queryClient: ReturnType<typeof useQueryClient>,
   id: string,
   patch: Partial<PhotoAsset>
 ) {
-  queryClient.setQueriesData<PhotoAsset[]>({ queryKey: photoKeys.all }, (old) =>
-    old?.map((photo) => (photo.id === id ? { ...photo, ...patch } : photo))
-  );
-  queryClient.setQueryData<PhotoAsset>(photoKeys.detail(id), (old) =>
+  queryClient.setQueriesData<unknown>({ queryKey: photoKeys.all }, (old: unknown) => {
+    if (!old) return old;
+    if (Array.isArray(old)) {
+      return old.map((photo: PhotoAsset) => (photo.id === id ? { ...photo, ...patch } : photo));
+    }
+    const infiniteOld = old as { pages?: PhotoAsset[][] };
+    if (infiniteOld.pages) {
+      return {
+        ...infiniteOld,
+        pages: infiniteOld.pages.map((page: PhotoAsset[]) =>
+          page.map((photo) => (photo.id === id ? { ...photo, ...patch } : photo))
+        )
+      };
+    }
+    return old;
+  });
+  queryClient.setQueryData<PhotoAsset>(photoKeys.detail(id), (old: PhotoAsset | undefined) =>
     old ? { ...old, ...patch } : old
   );
 }
