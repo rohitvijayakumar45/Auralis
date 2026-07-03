@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud, X, RefreshCw } from "lucide-react";
-import { v4 as uuid } from "uuid";
+import { generateId } from "../utils/generateId";
 import { toast } from "sonner";
 import { Button } from "../components/ui/Button";
 import { useQueryClient } from "@tanstack/react-query";
@@ -85,7 +85,7 @@ export function UploadPage() {
       }
       
       const newItems = files.map(file => ({
-        id: uuid(),
+        id: generateId(),
         fileName: file.name,
         title: file.name.replace(/\.[^.]+$/, ""),
         description: "",
