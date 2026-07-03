@@ -36,7 +36,7 @@ function toPhoto(row: Record<string, unknown>): PhotoAsset {
     description: String(row.description ?? ""),
     storageKey,
     thumbnailKey,
-    src: String(row.src ?? `${import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:4000"}/photos/${row.id}/download-url`),
+    src: String(row.src ?? `${import.meta.env.VITE_API_URL ?? "/api"}/photos/${row.id}/download-url`),
     blurSrc: String(row.blurSrc ?? "https://picsum.photos/seed/auralis-blur/32/24"),
     width: Number(row.width ?? 1600),
     height: Number(row.height ?? 1200),
@@ -54,7 +54,7 @@ function toPhoto(row: Record<string, unknown>): PhotoAsset {
 
 function createClient(): AxiosInstance {
   const client = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:4000",
+    baseURL: import.meta.env.VITE_API_URL ?? "/api",
     timeout: 30000
   });
   client.interceptors.request.use((config) => {

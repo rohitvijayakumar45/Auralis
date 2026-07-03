@@ -16,7 +16,7 @@ Frontend AWS mode:
 
 ```env
 VITE_DATA_ADAPTER=aws
-VITE_API_BASE_URL=http://127.0.0.1:4000
+VITE_API_URL=http://127.0.0.1:4000
 ```
 
 Backend:
