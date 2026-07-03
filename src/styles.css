@@ -1,0 +1,99 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #211d18;
+  background: #fbf7ef;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 5%, rgba(185, 109, 77, 0.12), transparent 30%),
+    radial-gradient(circle at 85% 8%, rgba(127, 140, 114, 0.12), transparent 28%),
+    #fbf7ef;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  color: #fbf7ef;
+  background: #596044;
+}
+
+.grain {
+  position: relative;
+}
+
+.grain::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(33, 29, 24, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(33, 29, 24, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, black, transparent 75%);
+}
+
+.focus-ring {
+  @apply outline-none ring-offset-2 ring-offset-bone focus-visible:ring-2 focus-visible:ring-olive;
+}
+
+.glass-nav {
+  background: rgba(251, 247, 239, 0.74);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(33, 29, 24, 0.1);
+}
+
+.hero-title {
+  font-size: clamp(2.3rem, 7vw, 6.8rem);
+  line-height: 0.91;
+  letter-spacing: 0;
+}
+
+.soft-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.soft-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(89, 96, 68, 0.38);
+  border-radius: 999px;
+  border: 3px solid #fbf7ef;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
