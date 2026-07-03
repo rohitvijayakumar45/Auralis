@@ -19,7 +19,7 @@ function orderBy(sort: string) {
 
 export async function listPhotos(userId: string, search: SearchInput) {
   const conditions = ["user_id = :userId", "is_deleted = FALSE"];
-  const params: Record<string, unknown> = { userId };
+  const params: Record<string, any> = { userId };
   if (search.filter === "favorites") conditions.push("is_favorite = TRUE");
   if (search.filter === "archive") conditions.push("is_archived = TRUE");
   if (search.albumId) {
@@ -45,11 +45,11 @@ export async function listPhotos(userId: string, search: SearchInput) {
 }
 
 export async function getPhoto(userId: string, id: string) {
-  const [rows] = await pool.execute(
+  const [rows] = await pool.execute<RowDataPacket[]>(
     "SELECT * FROM photos WHERE user_id = :userId AND id = :id LIMIT 1",
     { userId, id }
   );
-  return Array.isArray(rows) ? rows[0] : undefined;
+  return (rows as RowDataPacket[])[0];
 }
 
 export async function createPhoto(input: {

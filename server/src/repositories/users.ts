@@ -84,7 +84,7 @@ export async function getUserSettings(userId: string) {
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : { theme: 'system', galleryDensity: 'comfortable', sortOrder: 'newest', language: 'en', defaultAlbumId: null, uploadQuality: 'high' };
 }
 
-export async function updateUserSettings(userId: string, settings: Record<string, unknown>) {
+export async function updateUserSettings(userId: string, settings: Record<string, any>) {
   await pool.execute(
     `UPDATE user_settings SET
       theme = COALESCE(:theme, theme),
