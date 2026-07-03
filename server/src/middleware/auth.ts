@@ -19,7 +19,16 @@ export async function requireAuth(
       return;
     }
 
-    const { payload } = await jwtVerify(token, jwks, { issuer });
+    const { payload } = await jwtVerify(token, jwks, { 
+      issuer,
+      audience: config.aws.cognitoAppClientId
+    });
+    
+    if (payload.token_use !== "id") {
+      response.status(401).json({ message: "Invalid token type. Must provide an ID Token." });
+      return;
+    }
+
     const sub = String(payload.sub ?? "");
     const email = String(payload.email ?? payload.username ?? "");
     const name = String(payload.name ?? email.split("@")[0] ?? "Auralis Member");
@@ -30,7 +39,8 @@ export async function requireAuth(
 
     request.user = await upsertUserFromClaims({ sub, email, name });
     next();
-  } catch {
-    response.status(401).json({ message: "Invalid bearer token" });
+  } catch (error) {
+    console.error("JWT Verification Error:", error);
+    response.status(401).json({ message: "Invalid bearer token", details: String(error) });
   }
 }
